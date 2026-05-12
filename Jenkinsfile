@@ -1,14 +1,9 @@
-// Simple Jenkins Pipeline to fetch AWS S3 bucket names
+// Simple Jenkins Pipeline to fetch AWS S3 bucket names using EC2 IAM Role
 pipeline {
     agent any
     
     parameters {
         string(name: 'AWS_REGION', defaultValue: 'us-east-1', description: 'AWS Region')
-    }
-    
-    environment {
-        // AWS credentials stored in Jenkins
-        AWS_CREDENTIALS = credentials('aws-credentials')
     }
     
     stages {
@@ -22,10 +17,14 @@ pipeline {
         stage('Validate AWS Credentials') {
             steps {
                 script {
-                    echo "Validating AWS credentials..."
+                    echo "Validating AWS credentials from EC2 IAM Role (ec2-jenkins-s3)..."
                     sh '''
                         # Check if AWS CLI is installed
                         aws --version
+                        
+                        # Verify IAM role is attached
+                        echo "Current AWS Identity:"
+                        aws sts get-caller-identity
                     '''
                 }
             }
@@ -34,13 +33,9 @@ pipeline {
         stage('Fetch S3 Buckets') {
             steps {
                 script {
-                    echo "Fetching S3 bucket names from AWS..."
+                    echo "Fetching S3 bucket names from AWS using IAM Role..."
                     sh '''
-                        # Set AWS credentials
-                        export AWS_ACCESS_KEY_ID=${AWS_CREDENTIALS_USR}
-                        export AWS_SECRET_ACCESS_KEY=${AWS_CREDENTIALS_PSW}
-                        
-                        # List all S3 buckets
+                        # List all S3 buckets (credentials automatically from EC2 IAM role)
                         echo "============================================"
                         echo "Available S3 Buckets in AWS Account:"
                         echo "============================================"
@@ -73,10 +68,10 @@ pipeline {
     
     post {
         success {
-            echo "Pipeline executed successfully!"
+            echo "Pipeline executed successfully using IAM Role 'ec2-jenkins-s3'!"
         }
         failure {
-            echo "Pipeline failed! Check AWS credentials or permissions."
+            echo "Pipeline failed! Check if IAM role has S3 permissions."
         }
     }
 }
