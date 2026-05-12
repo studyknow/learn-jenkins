@@ -1,4 +1,4 @@
-// Simple Jenkins Pipeline to fetch AWS S3 bucket names using EC2 IAM Role
+// Jenkins Pipeline to fetch AWS S3 bucket names using Python
 pipeline {
     agent any
     
@@ -30,28 +30,65 @@ pipeline {
             }
         }
         
-        stage('Fetch S3 Buckets') {
+        stage('Setup Python Environment') {
             steps {
                 script {
-                    echo "Fetching S3 bucket names from AWS using IAM Role..."
+                    echo "Setting up Python environment..."
                     sh '''
-                        # List all S3 buckets (credentials automatically from EC2 IAM role)
-                        echo "============================================"
-                        echo "Available S3 Buckets in AWS Account:"
-                        echo "============================================"
-                        aws s3 ls --region ${AWS_REGION}
+                        # Check if Python is installed
+                        python3 --version
                         
-                        # Store bucket names in a variable
-                        BUCKETS=$(aws s3 ls --region ${AWS_REGION} | awk '{print $3}')
+                        # Install boto3 (AWS SDK for Python)
+                        pip3 install boto3 --quiet
                         
-                        echo ""
-                        echo "Bucket Names (one per line):"
-                        echo "$BUCKETS"
-                        
-                        # Count total buckets
-                        BUCKET_COUNT=$(echo "$BUCKETS" | wc -l)
-                        echo ""
-                        echo "Total buckets found: $BUCKET_COUNT"
+                        echo "Python environment ready!"
+                    '''
+                }
+            }
+        }
+        
+        stage('Fetch S3 Buckets with Python') {
+            steps {
+                script {
+                    echo "Fetching S3 bucket names using Python..."
+                    sh '''
+                        python3 << 'EOF'
+import boto3
+import sys
+
+# AWS Region
+aws_region = '${AWS_REGION}'
+
+try:
+    # Create S3 client (automatically uses EC2 IAM role credentials)
+    s3_client = boto3.client('s3', region_name=aws_region)
+    
+    # List all S3 buckets
+    response = s3_client.list_buckets()
+    
+    buckets = response.get('Buckets', [])
+    
+    print("=" * 50)
+    print("Available S3 Buckets in AWS Account:")
+    print("=" * 50)
+    
+    if not buckets:
+        print("No S3 buckets found in this AWS account.")
+    else:
+        for idx, bucket in enumerate(buckets, 1):
+            bucket_name = bucket['Name']
+            creation_date = bucket['CreationDate']
+            print(f"{idx}. {bucket_name} (Created: {creation_date})")
+        
+        print("\n" + "=" * 50)
+        print(f"Total buckets found: {len(buckets)}")
+        print("=" * 50)
+        
+except Exception as e:
+    print(f"Error fetching S3 buckets: {str(e)}", file=sys.stderr)
+    sys.exit(1)
+
+EOF
                     '''
                 }
             }
@@ -60,7 +97,7 @@ pipeline {
         stage('Display Results') {
             steps {
                 script {
-                    echo "S3 bucket fetching completed successfully!"
+                    echo "S3 bucket fetching completed successfully using Python!"
                 }
             }
         }
@@ -68,10 +105,10 @@ pipeline {
     
     post {
         success {
-            echo "Pipeline executed successfully using IAM Role 'ec2-jenkins-s3'!"
+            echo "✅ Pipeline executed successfully using IAM Role 'ec2-jenkins-s3'!"
         }
         failure {
-            echo "Pipeline failed! Check if IAM role has S3 permissions."
+            echo "❌ Pipeline failed! Check if IAM role has S3 permissions."
         }
     }
 }
